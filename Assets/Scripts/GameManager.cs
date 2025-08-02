@@ -46,11 +46,6 @@ public class GameManager : MonoBehaviour
     
     void Start()
     {
-        if (FindObjectOfType<UISetup>() == null)
-        {
-            gameObject.AddComponent<UISetup>();
-        }
-
         LoadCardSprites();
         InitializeGame();
         SetupUI();
@@ -91,7 +86,7 @@ public class GameManager : MonoBehaviour
         }
         texture.SetPixels(pixels);
         texture.Apply();
-        return Sprite.Create(texture, new Rect(0, 0, 64, 96), new Vector2(.8f, 1f));
+        return Sprite.Create(texture, new Rect(0, 0, 64, 96), new Vector2(1f, 1f));
     }
     
     void InitializeGame()

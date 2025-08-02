@@ -5,13 +5,6 @@ public class GameSetup : MonoBehaviour
 {
     void Start()
     {
-        // Add UISetup component to automatically create the game UI
-                if (FindObjectOfType<UISetup>() == null)
-        {
-            GameObject setupObj = new GameObject("GameSetup");
-            setupObj.AddComponent<UISetup>();
-        }
-        
         // Set up camera for 2D
         SetupCamera();
     }
