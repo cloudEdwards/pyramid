@@ -71,7 +71,16 @@ public class CardGameObject : MonoBehaviour
     
         void OnMouseDown()
     {
-        if (card != null && gameManager != null && gameManager.IsCardRemovable(card))
+        if (card == null || gameManager == null)
+        {
+            return;
+        }
+
+        if (card.isInStock)
+        {
+            gameManager.DrawCard();
+        }
+        else if (gameManager.IsCardRemovable(card))
         {
             gameManager.SelectCard(card);
         }

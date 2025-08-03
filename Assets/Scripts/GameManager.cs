@@ -40,6 +40,7 @@ public class GameManager : MonoBehaviour
     
     // Card sprites
     private Sprite[] cardSprites;
+    private Sprite[] cardBackSprites;
     
     // Selection logic
     private Card selectedCard;
@@ -54,6 +55,7 @@ public class GameManager : MonoBehaviour
     void LoadCardSprites()
     {
         cardSprites = Resources.LoadAll<Sprite>("Cards trimmed");
+        cardBackSprites = Resources.LoadAll<Sprite>("Cards backs");
         if (cardSprites == null || cardSprites.Length == 0)
         {
             Debug.LogError("Failed to load card sprites!");
@@ -250,6 +252,10 @@ public class GameManager : MonoBehaviour
     {
         if (!card.isFaceUp)
         {
+            if (cardBackSprites != null && cardBackSprites.Length > 0)
+            {
+                return cardBackSprites[0];
+            }
             // Return card back sprite, assuming it's the last one
             return cardSprites[cardSprites.Length - 1];
         }
@@ -380,7 +386,7 @@ public class GameManager : MonoBehaviour
         InitializeGame();
     }
 
-    void DrawCard()
+    public void DrawCard()
     {
         if (stock.Count > 0)
         {
