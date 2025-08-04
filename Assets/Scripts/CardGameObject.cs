@@ -1,92 +1,136 @@
 using UnityEngine;
-using UnityEngine.UI;
+using System.Collections;
 
 public class CardGameObject : MonoBehaviour
 {
     [Header("Components")]
     public SpriteRenderer spriteRenderer;
     public BoxCollider2D boxCollider;
-    
-    
+
     [Header("Card Data")]
     public Card card;
     public GameManager gameManager;
-    
-    [Header("Drag Settings")]
-    public float dragSpeed = 10f;
-    public float returnSpeed = 15f;
-    
+
+    [HideInInspector]
+    public bool isAnimating = false;
+
+    private bool isDragging = false;
+    private Vector3 offset;
     private Vector3 originalPosition;
-    
-    private Camera mainCamera;
-    
+    private string originalSortingLayerName;
+
     void Awake()
     {
-        // Get or add required components
         spriteRenderer = GetComponent<SpriteRenderer>();
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
-        }
-        
-        // boxCollider = GetComponent<BoxCollider2D>();
-        // if (boxCollider == null)
-        // {
-        //     boxCollider = gameObject.AddComponent<BoxCollider2D>();
-        // }
-        
-        // rigidbody2D = GetComponent<Rigidbody2D>();
-        // if (rigidbody2D == null)
-        // {
-        //     rigidbody2D = gameObject.AddComponent<Rigidbody2D>();
-        //     rigidbody2D.gravityScale = 0f;
-        //     rigidbody2D.linearDamping = 5f;
-        // }
-        
-        mainCamera = Camera.main;
-        if (mainCamera == null)
-        {
-            mainCamera = FindFirstObjectByType<Camera>();
-        }
-        
-        gameManager = FindFirstObjectByType<GameManager>();
+        boxCollider = GetComponent<BoxCollider2D>();
+        gameManager = FindObjectOfType<GameManager>();
     }
-    
+
     public void Initialize(Card card, Sprite cardSprite)
     {
         this.card = card;
-        if (spriteRenderer != null && cardSprite != null)
+        spriteRenderer.sprite = cardSprite;
+        if (spriteRenderer.sprite != null)
         {
-            spriteRenderer.sprite = cardSprite;
+            boxCollider.size = spriteRenderer.bounds.size;
         }
-        
-        // Set collider size based on sprite
-        if (boxCollider != null && cardSprite != null)
-        {
-            boxCollider.size = cardSprite.bounds.size;
-        }
-        
-        Debug.Log($"CardGameObject initialized: {card.rank} of {card.suit}");
     }
-    
-        void OnMouseDown()
+
+    void OnMouseDown()
     {
-        if (card == null || gameManager == null)
-        {
-            return;
-        }
+        if (isAnimating || card == null || gameManager == null) return;
 
         if (card.isInStock)
         {
             gameManager.DrawCard();
+            return;
         }
-        else if (gameManager.IsCardRemovable(card))
+
+        if (gameManager.IsCardRemovable(card))
         {
-            gameManager.SelectCard(card);
+            isDragging = true;
+            originalPosition = transform.position;
+            originalSortingLayerName = spriteRenderer.sortingLayerName;
+            spriteRenderer.sortingLayerName = "Dragged";
+            offset = transform.position - Camera.main.ScreenToWorldPoint(Input.mousePosition);
+
+            gameManager.StartDrag(card);
+        }
+    }
+
+    void OnMouseDrag()
+    {
+        if (isDragging)
+        {
+            Vector3 newPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition) + offset;
+            transform.position = new Vector3(newPosition.x, newPosition.y, originalPosition.z);
+        }
+    }
+
+    void OnMouseUp()
+    {
+        if (!isDragging) return;
+
+        isDragging = false;
+
+        Card targetCard = null;
+        
+        boxCollider.enabled = false;
+        RaycastHit2D hit = Physics2D.Raycast(Camera.main.ScreenToWorldPoint(Input.mousePosition), Vector2.zero);
+        boxCollider.enabled = true;
+
+        if (hit.collider != null)
+        {
+            CardGameObject otherCardGO = hit.collider.GetComponent<CardGameObject>();
+            if (otherCardGO != null)
+            {
+                targetCard = otherCardGO.card;
+            }
+        }
+
+        bool success = gameManager.ProcessDrop(targetCard);
+
+        if (!success)
+        {
+            StartCoroutine(AnimateMove(originalPosition, 0.2f, true));
         }
         else
         {
-            Debug.Log($"Card not selectable: {card?.rank} of {card?.suit}");
+            spriteRenderer.sortingLayerName = originalSortingLayerName;
+        }
+
+        gameManager.EndDrag(success);
+    }
+
+    public IEnumerator AnimateToFoundation(Vector3 targetPosition, float duration)
+    {
+        isAnimating = true;
+        boxCollider.enabled = false;
+        yield return StartCoroutine(AnimateMove(targetPosition, duration, false));
+        spriteRenderer.sprite = gameManager.GetCardBackSprite();
+        yield return new WaitForSeconds(0.5f); // Pause briefly on the foundation
+        Destroy(gameObject);
+    }
+
+    private IEnumerator AnimateMove(Vector3 targetPosition, float duration, bool restoreLayer)
+    {
+        float elapsedTime = 0;
+        Vector3 startingPosition = transform.position;
+
+        while (elapsedTime < duration)
+        {
+            transform.position = Vector3.Lerp(startingPosition, targetPosition, (elapsedTime / duration));
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+
+        transform.position = targetPosition;
+        if (restoreLayer)
+        {
+            spriteRenderer.sortingLayerName = originalSortingLayerName;
         }
     }
-} 
+}
+
+
+ 

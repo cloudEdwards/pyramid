@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using System.Linq;
+using System.Collections;
 
 public class GameManager : MonoBehaviour
 {
@@ -20,8 +21,10 @@ public class GameManager : MonoBehaviour
     public Button resetButton;
     public Button drawButton;
     public Button undoButton;
+    public TextMeshProUGUI timerText;
     public TextMeshProUGUI scoreText;
     public TextMeshProUGUI movesText;
+    public TextMeshProUGUI winText;
     
     
     [Header("Card Prefab")]
@@ -37,6 +40,8 @@ public class GameManager : MonoBehaviour
     private int score = 0;
     private int moves = 0;
     private Stack<GameAction> actionHistory = new Stack<GameAction>();
+    private float timer;
+    private bool isTimerRunning;
     
     // Card sprites
     private Sprite[] cardSprites;
@@ -97,6 +102,8 @@ public class GameManager : MonoBehaviour
         moves = 0;
         actionHistory.Clear();
         selectedCard = null;
+        timer = 0f;
+        isTimerRunning = true;
         
         CreateDeck();
         ShuffleDeck();
@@ -171,20 +178,26 @@ public class GameManager : MonoBehaviour
         if (resetButton != null)
             resetButton.onClick.AddListener(ResetGame);
         if (drawButton != null)
-            drawButton.onClick.AddListener(DrawCard);
+            drawButton.onClick.AddListener(ReshuffleWaste);
         if (undoButton != null)
             undoButton.onClick.AddListener(UndoLastAction);
         
         UpdateUI();
     }
 
+    private Dictionary<Card, CardGameObject> cardGameObjectMap = new Dictionary<Card, CardGameObject>();
+
     void UpdateUI()
     {
-        // Clear all card GameObjects
-        foreach (Transform child in pyramidContainer) Destroy(child.gameObject);
-        foreach (Transform child in stockContainer) Destroy(child.gameObject);
-        foreach (Transform child in wasteContainer) Destroy(child.gameObject);
-        foreach (Transform child in foundationContainer) Destroy(child.gameObject);
+        // Clear all card GameObjects that are not animating
+        foreach (var entry in cardGameObjectMap)
+        {
+            if (entry.Value != null && !entry.Value.isAnimating)
+            {
+                Destroy(entry.Value.gameObject);
+            }
+        }
+        cardGameObjectMap.Clear();
 
         CreatePyramidUI();
         CreateStockUI();
@@ -192,8 +205,44 @@ public class GameManager : MonoBehaviour
         
         if (scoreText != null) scoreText.text = "Score: " + score;
         if (movesText != null) movesText.text = "Moves: " + moves;
+
+        if (drawButton != null)
+        {
+            drawButton.gameObject.SetActive(stock.Count == 0 && waste.Count > 0);
+        }
+
+        if (winText != null)
+        {
+            winText.gameObject.SetActive(pyramid.Count == 0);
+            if (pyramid.Count == 0) isTimerRunning = false;
+        }
     }
-    
+
+    void Update()
+    {
+        if (isTimerRunning)
+        {
+            timer += Time.deltaTime;
+            UpdateTimerText();
+        }
+    }
+
+    void UpdateTimerText()
+    {
+        if (timerText != null)
+        {
+            int minutes = Mathf.FloorToInt(timer / 60F);
+            int seconds = Mathf.FloorToInt(timer % 60F);
+            timerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
+        }
+    }
+
+    void UpdateFoundationUI()
+    {
+        foreach (Transform child in foundationContainer) Destroy(child.gameObject);
+        CreateFoundationUI();
+    }
+
     void CreatePyramidUI()
     {
         foreach (Card card in pyramid)
@@ -202,19 +251,11 @@ public class GameManager : MonoBehaviour
         }
     }
     
-    Vector3 GetPyramidPosition(int row, int col)
-    {
-        float xOffset = (col - row * 0.5f) * pyramidCardSpacing;
-        float yOffset = (pyramidRows - 1 - row) * pyramidRowSpacing;
-        return new Vector3(xOffset, yOffset - 1, 0);
-    }
-    
     void CreateStockUI()
     {
         if (stock.Count > 0)
         {
             Card topCard = stock.Last();
-            // Stock cards are face down until drawn
             CreateCardGameObject(topCard, stockContainer.position, stockContainer);
         }
     }
@@ -228,17 +269,28 @@ public class GameManager : MonoBehaviour
             CreateCardGameObject(topCard, wasteContainer.position, wasteContainer);
         }
     }
+
+    void CreateFoundationUI()
+    {
+        if (foundation.Count > 0)
+        {
+            // Create a single card back to represent the foundation pile
+            GameObject cardObj = Instantiate(cardGameObjectPrefab, foundationContainer.position, Quaternion.identity, foundationContainer);
+            CardGameObject cardGameObject = cardObj.GetComponent<CardGameObject>();
+            cardGameObject.Initialize(null, GetCardBackSprite()); // No card data needed, just the sprite
+            cardGameObject.GetComponent<BoxCollider2D>().enabled = false; // Not interactable
+        }
+    }
     
     GameObject CreateCardGameObject(Card card, Vector3 position, Transform parent)
     {
         if (cardGameObjectPrefab == null) return null;
         
         GameObject cardObj = Instantiate(cardGameObjectPrefab, position, Quaternion.identity, parent);
-        cardObj.tag = "Card";
-        
         CardGameObject cardGameObject = cardObj.GetComponent<CardGameObject>();
         Sprite cardSprite = GetCardSprite(card);
         cardGameObject.Initialize(card, cardSprite);
+        cardGameObjectMap[card] = cardGameObject;
         
         if (card.isInPyramid)
         {
@@ -252,12 +304,7 @@ public class GameManager : MonoBehaviour
     {
         if (!card.isFaceUp)
         {
-            if (cardBackSprites != null && cardBackSprites.Length > 0)
-            {
-                return cardBackSprites[0];
-            }
-            // Return card back sprite, assuming it's the last one
-            return cardSprites[cardSprites.Length - 1];
+            return GetCardBackSprite();
         }
         int suitIndex = GetSuitIndex(card.suit);
         int rankIndex = card.value - 1;
@@ -267,6 +314,22 @@ public class GameManager : MonoBehaviour
             return cardSprites[spriteIndex];
         }
         return cardSprites[0]; // Fallback
+    }
+
+    public Sprite GetCardBackSprite()
+    {
+        if (cardBackSprites != null && cardBackSprites.Length > 0)
+        {
+            return cardBackSprites[0];
+        }
+        return cardSprites[cardSprites.Length - 1]; // Fallback
+    }
+    
+    Vector3 GetPyramidPosition(int row, int col)
+    {
+        float xOffset = (col - row * 0.5f) * pyramidCardSpacing;
+        float yOffset = (pyramidRows - 1 - row) * pyramidRowSpacing;
+        return new Vector3(xOffset, yOffset - 1, 0);
     }
     
     int GetSuitIndex(string suit)
@@ -305,56 +368,132 @@ public class GameManager : MonoBehaviour
         return card.isInWaste && waste.Count > 0 && waste.Last() == card;
     }
 
-    public void SelectCard(Card card)
-    {
-        if (!IsCardRemovable(card))
-        {
-            Debug.Log($"Card not selectable: {card?.rank} of {card?.suit}");
-            return;
-        }
+    private Card currentlyDraggedCard;
 
-        if (card.value == 13) // King
+    public void StartDrag(Card card)
+    {
+        currentlyDraggedCard = card;
+        if (card.isInPyramid)
         {
-            RemoveMatchedCard(card);
-            score += 5;
-            moves++;
-            UpdateUI();
+            pyramid.Remove(card);
         }
-        else if (selectedCard == null)
+        else if (card.isInWaste)
         {
-            selectedCard = card;
-            Debug.Log($"Selected card: {card.rank} of {card.suit}");
-        }
-        else
-        {
-            if (selectedCard != card)
-            {
-                TryRemovePair(selectedCard, card);
-            }
-            selectedCard = null;
+            ShowPreviousWasteCard();
         }
     }
 
-    void TryRemovePair(Card card1, Card card2)
+    public void EndDrag(bool success)
     {
-        if (card1.value + card2.value == 13)
+        if (currentlyDraggedCard == null) return;
+
+        if (!success)
+        {
+            if (currentlyDraggedCard.isInPyramid)
+            {
+                pyramid.Add(currentlyDraggedCard);
+            }
+        }
+
+        if (currentlyDraggedCard.isInWaste)
+        {
+            HidePreviousWasteCard();
+        }
+
+        currentlyDraggedCard = null;
+    }
+
+    public bool ProcessDrop(Card targetCard)
+    {
+        if (currentlyDraggedCard == null) return false;
+
+        bool isMatch = false;
+        Card card1 = currentlyDraggedCard;
+        Card card2 = targetCard;
+
+        // Case 1: Dropped a King on an empty space
+        if (card1.value == 13 && card2 == null)
+        {
+            isMatch = true;
+        }
+        // Case 2: Dropped a card on another card
+        else if (card2 != null && IsCardRemovable(card2))
+        {
+            if (card1.value + card2.value == 13)
+            {
+                isMatch = true;
+            }
+        }
+
+        if (isMatch)
+        {
+            StartCoroutine(HandleSuccessfulMatch(card1, card2));
+        }
+
+        return isMatch;
+    }
+
+    private IEnumerator HandleSuccessfulMatch(Card card1, Card card2)
+    {
+        // Find the game objects before they are destroyed
+        CardGameObject card1GO = cardGameObjectMap.ContainsKey(card1) ? cardGameObjectMap[card1] : null;
+        CardGameObject card2GO = (card2 != null && cardGameObjectMap.ContainsKey(card2)) ? cardGameObjectMap[card2] : null;
+
+        // Mark them as animating so they aren't destroyed by UpdateUI
+        if (card1GO != null) card1GO.isAnimating = true;
+        if (card2GO != null) card2GO.isAnimating = true;
+
+        // Update the game state data
+        if (card2 == null) // King
+        {
+            RemoveMatchedCard(card1);
+            score += 5;
+        }
+        else
         {
             RemoveMatchedCard(card1);
             RemoveMatchedCard(card2);
             score += 10;
-            moves++;
-            UpdateUI();
         }
-        else
-        {
-            Debug.Log("Cards do not sum to 13");
-        }
+        moves++;
+
+        // Redraw the UI, which will leave the animating cards alone
+        UpdateUI();
+
+        // Now, animate the cards to the foundation
+        if (card1GO != null) StartCoroutine(card1GO.AnimateToFoundation(foundationContainer.position, 0.3f));
+        if (card2GO != null) StartCoroutine(card2GO.AnimateToFoundation(foundationContainer.position, 0.3f));
+
+        // Wait for animations to finish before updating the foundation
+        yield return new WaitForSeconds(0.4f); 
+        UpdateFoundationUI();
     }
-    
-    void RemoveMatchedCard(Card card)
+
+    public void RemoveMatchedCard(Card card)
     {
         if (card.isInPyramid) RemoveCardFromPyramid(card);
         else if (card.isInWaste) RemoveCardFromWaste(card);
+    }
+
+    private GameObject tempWasteCardGO;
+
+    public void ShowPreviousWasteCard()
+    {
+        if (waste.Count > 1)
+        {
+            if (tempWasteCardGO != null) Destroy(tempWasteCardGO);
+            Card secondCard = waste[waste.Count - 2];
+            tempWasteCardGO = CreateCardGameObject(secondCard, wasteContainer.position, wasteContainer);
+        }
+    }
+
+    public void HidePreviousWasteCard()
+    {
+        if (tempWasteCardGO != null)
+        {
+            Destroy(tempWasteCardGO);
+            tempWasteCardGO = null;
+        }
     }
 
     public void RemoveCardFromPyramid(Card card)
@@ -399,10 +538,6 @@ public class GameManager : MonoBehaviour
             actionHistory.Push(new GameAction { actionType = GameActionType.DrawCard, card = card });
             moves++;
             UpdateUI();
-        }
-        else
-        {
-            ReshuffleWaste();
         }
     }
     
