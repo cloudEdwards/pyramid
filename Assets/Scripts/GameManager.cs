@@ -444,16 +444,18 @@ public class GameManager : MonoBehaviour
         if (card2GO != null) card2GO.isAnimating = true;
 
         // Update the game state data
+        if (card1.isInPyramid) score += 5;
+        if (card2 != null && card2.isInPyramid) score += 5;
+        if (scoreText != null) scoreText.text = "Score: " + score;
+
         if (card2 == null) // King
         {
             RemoveMatchedCard(card1);
-            score += 5;
         }
         else
         {
             RemoveMatchedCard(card1);
             RemoveMatchedCard(card2);
-            score += 10;
         }
         moves++;
 

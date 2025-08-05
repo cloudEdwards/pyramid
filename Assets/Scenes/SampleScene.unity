@@ -1258,7 +1258,7 @@ MonoBehaviour:
   drawButton: {fileID: 106660823}
   undoButton: {fileID: 2048026136}
   timerText: {fileID: 690699106}
-  scoreText: {fileID: 690699106}
+  scoreText: {fileID: 2047197341}
   movesText: {fileID: 2056445740}
   winText: {fileID: 2078483449}
   cardGameObjectPrefab: {fileID: 5519571979707248761, guid: c656959456b0b479c927deba688d4b0e, type: 3}
